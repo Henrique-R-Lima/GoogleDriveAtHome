@@ -22,6 +22,7 @@ class SyncHandler(FileSystemEventHandler):
         if element_str == "test_chamber":
             return
         
+        # Simplify element path
         element_str = element_str.removeprefix("test_chamber/")
 
         # Current time
@@ -36,7 +37,7 @@ observer.start()
 
 try:
     while True:
-        time.sleep(1)
+        time.sleep(3)
 except KeyboardInterrupt:
     observer.stop()
 observer.join()
