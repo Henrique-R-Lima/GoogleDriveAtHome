@@ -1,0 +1,80 @@
+[
+  {
+    "timestamp": "2025-05-28T10:43:49.717656",
+    "type": "created",
+    "src": "test_chamber/TXT (copy).txt",
+    "is_directory": false
+  },
+  {
+    "timestamp": "2025-05-28T10:43:49.718032",
+    "type": "modified",
+    "src": "test_chamber",
+    "is_directory": true
+  },
+  {
+    "timestamp": "2025-05-28T10:43:49.718248",
+    "type": "modified",
+    "src": "test_chamber",
+    "is_directory": true
+  },
+  {
+    "timestamp": "2025-05-28T10:43:49.718411",
+    "type": "modified",
+    "src": "test_chamber/TXT (copy).txt",
+    "is_directory": false
+  },
+  {
+    "timestamp": "2025-05-28T10:48:28.693575",
+    "type": "created",
+    "src": "test_chamber/TXT (another copy).txt",
+    "is_directory": false
+  },
+  {
+    "timestamp": "2025-05-28T10:48:28.693917",
+    "type": "modified",
+    "src": "test_chamber/TXT (another copy).txt",
+    "is_directory": false
+  },
+  {
+    "timestamp": "2025-05-28T11:01:29.348717",
+    "type": "deleted",
+    "src": "test_chamber/banana",
+    "is_directory": true
+  },
+  {
+    "timestamp": "2025-05-28T11:01:29.349159",
+    "type": "deleted",
+    "src": "test_chamber/tchongas",
+    "is_directory": true
+  },
+  {
+    "timestamp": "2025-05-28T11:01:29.349545",
+    "type": "deleted",
+    "src": "test_chamber/TXT.txt",
+    "is_directory": false
+  },
+  {
+    "timestamp": "2025-05-28T11:01:29.349887",
+    "type": "deleted",
+    "src": "test_chamber/TXT (another copy).txt",
+    "is_directory": false
+  },
+  {
+    "timestamp": "2025-05-28T11:01:29.350269",
+    "type": "deleted",
+    "src": "test_chamber/TXT (copy).txt",
+    "is_directory": false
+  },
+  {
+    "timestamp": "2025-05-28T11:01:35.863079",
+    "type": "created",
+    "src": "test_chamber/TXT.txt",
+    "is_directory": false
+  },
+  {
+    "timestamp": "2025-05-28T11:01:35.863539",
+    "type": "modified",
+    "src": "test_chamber/TXT.txt",
+    "is_directory": false
+  }
+]
