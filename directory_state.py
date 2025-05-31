@@ -4,6 +4,14 @@ from datetime import datetime
 import time, os
 import json
 
+# Conection with MongoDB
+from pymongo import MongoClient
+from mongo_config import MONGO_URI, DB_NAME  # se usar o arquivo de config
+
+client = MongoClient(MONGO_URI)
+db = client[DB_NAME]
+events_collection = db["events"]
+
 # Program working directory
 WORKING_DIR = os.getcwd()
 
@@ -20,6 +28,9 @@ class SyncHandler(FileSystemEventHandler):
         if not os.path.exists(CHANGE_LOG):
             with open(CHANGE_LOG, 'w') as f:
                 json.dump([], f)
+
+        # Dicionary to store the last event of each file
+        self.last_events = {}
     
     def _record_change(self, event_type, src_path, is_directory=False, dest_path=None):
         # Get relative paths
@@ -29,6 +40,15 @@ class SyncHandler(FileSystemEventHandler):
         # Ignore changes to the log file itself
         if rel_src == os.path.basename(CHANGE_LOG):
             return
+        
+        # Verify if the same event was registered recently
+        now = datetime.now().timestamp()
+        key = (event_type, rel_src)
+        last_time = self.last_events.get(key, 0)
+        if now - last_time < 0.5:
+            return  # Ignore duplicate events within 0.5 seconds
+        # Update the last event time
+        self.last_events[key] = now
         
         # Create change record
         change = {
@@ -47,6 +67,12 @@ class SyncHandler(FileSystemEventHandler):
             log.append(change)
             f.seek(0)
             json.dump(log, f, indent=2)
+
+        # Insert change into MongoDB
+        try:
+            events_collection.insert_one(change)
+        except Exception as e:
+            print(f"Error inserting change into MongoDB: {e}")
         
         # Print the change (optional)
         print(f"{change['timestamp']} - {event_type}: {rel_src}" + 
