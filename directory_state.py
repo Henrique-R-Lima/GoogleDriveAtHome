@@ -1,45 +1,28 @@
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
-from datetime import datetime
-from flask import Flask, request, jsonify
-import threading
-import time
 import os
+import time
 import json
 import shutil
 import socket
-import requests
 import base64
+import threading
+import requests
+from flask import Flask, request, jsonify
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+from datetime import datetime
 
-# ==================== CONFIG ====================
+# ========== CONFIGURATION ==========
 
 WORKING_DIR = os.getcwd()
 WATCH_PATH = os.path.join(WORKING_DIR, "test_chamber")
 CHANGE_LOG = os.path.join(WORKING_DIR, "change_log.json")
 
-# Peer machine IP and port
-PEER_ADDRESS = "http://<peer_ip>:5000"  # Example: http://192.168.1.2:5000
+# Peer machine's IP address
+PEER_ADDRESS = "http://<peer_ip>:5000"  # e.g., http://192.168.1.2:5000
 
 MACHINE_ID = socket.gethostname()
-# May return localhost, which is not desirable
-# MACHINE_IP = socket.gethostbyname(MACHINE_ID)
 
-def get_local_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        # Doesn't actually connect, just determines the best local IP
-        s.connect(("8.8.8.8", 80))  # Google's public DNS
-        local_ip = s.getsockname()[0]
-    except Exception:
-        local_ip = "127.0.0.1"  # Fallback to localhost
-    finally:
-        s.close()
-    return local_ip
-
-MACHINE_IP = get_local_ip()
-print("Local IP:", MACHINE_IP)
-
-# ==================== CHANGE LOG ====================
+# ========== INIT SETUP ==========
 
 if not os.path.exists(CHANGE_LOG):
     with open(CHANGE_LOG, 'w') as f:
@@ -55,7 +38,17 @@ def append_to_log(change):
     with open(CHANGE_LOG, 'w') as f:
         json.dump(log, f, indent=2)
 
-# ==================== FILE WATCHER ====================
+# ========== FILE I/O ==========
+
+def write_file_content(path, content_b64):
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'wb') as f:
+            f.write(base64.b64decode(content_b64.encode('utf-8')))
+    except Exception as e:
+        print(f"Error writing file {path}: {e}")
+
+# ========== FILE WATCHER ==========
 
 class SyncHandler(FileSystemEventHandler):
     def __init__(self):
@@ -81,10 +74,8 @@ class SyncHandler(FileSystemEventHandler):
 
         now = datetime.now().timestamp()
         key = (event_type, rel_src, rel_dest)
-        last_time = self.last_events.get(key, 0)
-        if now - last_time < 0.5:
+        if now - self.last_events.get(key, 0) < 0.5:
             return
-
         self.last_events[key] = now
 
         change = {
@@ -96,15 +87,12 @@ class SyncHandler(FileSystemEventHandler):
         }
         if dest_path:
             change['dest'] = rel_dest
-
-        # For file creation or modification, include content
         if event_type in ['created', 'modified'] and not is_directory:
             content = self._read_file_content(src_path)
             if content:
                 change['content'] = content
 
         append_to_log(change)
-
         print(f"{change['timestamp']} | {event_type}: {rel_src}" + (f" -> {rel_dest}" if rel_dest else ""))
 
     def on_moved(self, event):
@@ -119,15 +107,7 @@ class SyncHandler(FileSystemEventHandler):
     def on_modified(self, event):
         self._record_change('modified', event.src_path, event.is_directory)
 
-# ==================== APPLY CHANGES ====================
-
-def write_file_content(path, content_b64):
-    try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, 'wb') as f:
-            f.write(base64.b64decode(content_b64.encode('utf-8')))
-    except Exception as e:
-        print(f"Error writing file {path}: {e}")
+# ========== APPLY REMOTE CHANGES ==========
 
 def apply_changes(changes):
     for change in changes:
@@ -137,7 +117,7 @@ def apply_changes(changes):
         if change['origin'] == MACHINE_ID:
             continue
 
-        print(f"Applying {change['type']} {change['src']}" + (f" -> {change.get('dest')}" if dest_path else ""))
+        print(f"[Sync] Applying {change['type']} {change['src']}" + (f" -> {change.get('dest')}" if dest_path else ""))
 
         try:
             if change['type'] == 'created':
@@ -165,21 +145,88 @@ def apply_changes(changes):
         except Exception as e:
             print(f"Error applying {change['type']} {change['src']}: {e}")
 
-# ==================== HTTP API ====================
+# ========== STARTUP BOOTSTRAP SYNC ==========
+
+def initial_sync_from_peer():
+    try:
+        response = requests.get(f"{PEER_ADDRESS}/get_full_state", timeout=10)
+        if response.status_code != 200:
+            print("Peer did not return a valid state.")
+            return
+
+        remote_state = response.json()
+
+        for item in remote_state:
+            local_path = os.path.join(WORKING_DIR, item['path'])
+
+            if item['is_directory']:
+                os.makedirs(local_path, exist_ok=True)
+                continue
+
+            remote_mtime = item.get('last_modified')
+            remote_content = item.get('content')
+
+            if not os.path.exists(local_path):
+                print(f"[Init Sync] Creating missing file: {item['path']}")
+                write_file_content(local_path, remote_content)
+                os.utime(local_path, (remote_mtime, remote_mtime))
+                continue
+
+            local_mtime = os.path.getmtime(local_path)
+            if abs(local_mtime - remote_mtime) < 0.01:
+                continue
+
+            if remote_mtime > local_mtime:
+                print(f"[Conflict] Remote file newer: Replacing {item['path']}")
+                write_file_content(local_path, remote_content)
+                os.utime(local_path, (remote_mtime, remote_mtime))
+            else:
+                print(f"[Conflict] Local file newer: Keeping {item['path']}")
+
+    except Exception as e:
+        print(f"[Init Sync] Failed: {e}")
+
+# ========== HTTP API SERVER ==========
 
 app = Flask(__name__)
 
 @app.route('/get_changes', methods=['GET'])
 def get_changes():
     since = request.args.get('since')
-    log = load_log()
-    filtered = [entry for entry in log if entry['timestamp'] > since]
-    return jsonify(filtered)
+    return jsonify([e for e in load_log() if e['timestamp'] > since])
+
+@app.route('/get_full_state', methods=['GET'])
+def get_full_state():
+    state = []
+    for root, dirs, files in os.walk(WATCH_PATH):
+        for name in files:
+            abs_path = os.path.join(root, name)
+            rel_path = os.path.relpath(abs_path, WORKING_DIR)
+            try:
+                with open(abs_path, 'rb') as f:
+                    content = base64.b64encode(f.read()).decode('utf-8')
+                mtime = os.path.getmtime(abs_path)
+                state.append({
+                    'path': rel_path,
+                    'content': content,
+                    'last_modified': mtime,
+                    'is_directory': False
+                })
+            except Exception as e:
+                print(f"Could not read {rel_path}: {e}")
+        for name in dirs:
+            abs_path = os.path.join(root, name)
+            rel_path = os.path.relpath(abs_path, WORKING_DIR)
+            state.append({
+                'path': rel_path,
+                'is_directory': True
+            })
+    return jsonify(state)
 
 def run_server():
     app.run(host="0.0.0.0", port=5000)
 
-# ==================== SYNC CLIENT ====================
+# ========== SYNC CLIENT ==========
 
 def sync_with_peer():
     last_check = datetime.now().isoformat()
@@ -195,30 +242,29 @@ def sync_with_peer():
                         append_to_log(change)
                     last_check = max(c['timestamp'] for c in remote_changes)
         except Exception as e:
-            print(f"Sync error: {e}")
+            print(f"[Sync Client] Error: {e}")
 
-# ==================== MAIN ====================
+# ========== MAIN RUN ==========
 
 if __name__ == "__main__":
     os.makedirs(WATCH_PATH, exist_ok=True)
 
+    print("🧩 Performing initial synchronization with peer...")
+    initial_sync_from_peer()
+
+    print(f"📡 Starting sync on {MACHINE_ID}")
     observer = Observer()
-    event_handler = SyncHandler()
-    observer.schedule(event_handler, path=WATCH_PATH, recursive=True)
+    observer.schedule(SyncHandler(), path=WATCH_PATH, recursive=True)
     observer.start()
 
     threading.Thread(target=run_server, daemon=True).start()
-
-    print(f"Started file sync on {MACHINE_ID}. Watching {WATCH_PATH}")
-    print("Serving API on port 5000")
-
     threading.Thread(target=sync_with_peer, daemon=True).start()
 
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("Stopping sync...")
         observer.stop()
+        print("🔌 Stopping sync...")
 
     observer.join()
