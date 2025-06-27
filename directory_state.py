@@ -18,7 +18,7 @@ WATCH_PATH = os.path.join(WORKING_DIR, "test_chamber")
 CHANGE_LOG = os.path.join(WORKING_DIR, "change_log.json")
 
 # Peer machine's IP address
-PEER_ADDRESS = "http://<peer_ip>:5000"  # e.g., http://192.168.1.2:5000
+PEER_ADDRESS = "http://172.21.17.22:5000"  # e.g., http://192.168.1.2:5000
 
 MACHINE_ID = socket.gethostname()
 
@@ -85,6 +85,7 @@ class SyncHandler(FileSystemEventHandler):
             'is_directory': is_directory,
             'origin': MACHINE_ID
         }
+
         if dest_path:
             change['dest'] = rel_dest
         if event_type in ['created', 'modified'] and not is_directory:
@@ -223,10 +224,28 @@ def get_full_state():
             })
     return jsonify(state)
 
+@app.route('/push_change', methods=['POST'])
+def push_change():
+    change = request.get_json()
+    if not change:
+        return jsonify({'status': 'error', 'message': 'No change payload'}), 400
+
+    if 'origin' not in change:
+        change['origin'] = f"user-{request.remote_addr}"
+
+    try:
+        print(f"[Push from User] {change['type']} {change['src']} (origin: {change['origin']})")
+        apply_changes([change])
+        append_to_log(change)
+        return jsonify({'status': 'ok'}), 200
+
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 def run_server():
     app.run(host="0.0.0.0", port=5000)
 
-# ========== SYNC CLIENT ==========
+# ========== SYNC CLIENT ===========
 
 def sync_with_peer():
     last_check = datetime.now().isoformat()
@@ -249,10 +268,10 @@ def sync_with_peer():
 if __name__ == "__main__":
     os.makedirs(WATCH_PATH, exist_ok=True)
 
-    print("🧩 Performing initial synchronization with peer...")
+    print("Performing initial synchronization with peer...")
     initial_sync_from_peer()
 
-    print(f"📡 Starting sync on {MACHINE_ID}")
+    print(f"Starting sync on {MACHINE_ID}")
     observer = Observer()
     observer.schedule(SyncHandler(), path=WATCH_PATH, recursive=True)
     observer.start()
@@ -265,6 +284,6 @@ if __name__ == "__main__":
             time.sleep(1)
     except KeyboardInterrupt:
         observer.stop()
-        print("🔌 Stopping sync...")
+        print("Stopping sync...")
 
     observer.join()
