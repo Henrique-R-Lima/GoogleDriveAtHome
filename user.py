@@ -1,154 +1,227 @@
 import os
-import json
 import time
+import json
+import shutil
+import socket
 import base64
 import threading
 import requests
-from flask import Flask, render_template, request, jsonify
-from flask_socketio import SocketIO, emit
+from flask import Flask, request, jsonify
+from flask_socketio import SocketIO
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from datetime import datetime
 
-# === CONFIGURATION ===
+# ========== CONFIGURATION ==========
+
+CLOUD_PEERS = [
+    "http://172.21.17.22:5000",
+    "http://172.21.17.23:5000"
+]
+
 WORKING_DIR = os.getcwd()
 WATCH_PATH = os.path.join(WORKING_DIR, "test_chamber")
-CLOUD_PEERS = ["http://172.21.17.21:5000", "http://172.21.17.22:5000"]
-MACHINE_ID = f"user-{os.uname().nodename}"
+CHANGE_LOG = os.path.join(WORKING_DIR, "change_log.json")
 
-# === Flask setup ===
-app = Flask(__name__, template_folder="templates", static_folder="static")
-socketio = SocketIO(app)
+MACHINE_ID = f"user-{socket.gethostname()}"
 
-# === Data State ===
+# ========== STATE ==========
+
 pending_changes = []
-current_state = []
+current_peer = None
+socketio = SocketIO(cors_allowed_origins="*")
+app = Flask(__name__)
+socketio.init_app(app)
+
+# ========== LOG UTILITIES ==========
+
+def log(msg):
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+
+# ========== FILE I/O ==========
+
+def write_file_content(path, content_b64):
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'wb') as f:
+            f.write(base64.b64decode(content_b64.encode('utf-8')))
+    except Exception as e:
+        log(f"Error writing file {path}: {e}")
+
+def read_file_content(path):
+    try:
+        with open(path, 'rb') as f:
+            return base64.b64encode(f.read()).decode('utf-8')
+    except Exception as e:
+        log(f"Error reading {path}: {e}")
+        return None
+
+# ========== SYNC ENGINE ==========
 
 def get_fastest_peer():
     for url in CLOUD_PEERS:
         try:
-            start = time.time()
             r = requests.get(f"{url}/get_full_state", timeout=3)
             if r.status_code == 200:
-                print(f"Selected peer: {url}")
+                log(f"Peer selected: {url}")
                 return url, r.json()
-        except:
-            continue
+        except Exception as e:
+            log(f"Peer {url} unreachable")
     return None, []
 
-def apply_remote_state(remote_state):
-    for root, dirs, files in os.walk(WATCH_PATH, topdown=False):
-        for name in files:
-            os.remove(os.path.join(root, name))
-        for name in dirs:
-            os.rmdir(os.path.join(root, name))
-
-    for item in remote_state:
+def apply_remote_state(data):
+    for item in data:
         path = os.path.join(WORKING_DIR, item['path'])
+
         if item['is_directory']:
             os.makedirs(path, exist_ok=True)
-        else:
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, 'wb') as f:
-                f.write(base64.b64decode(item['content'].encode('utf-8')))
+            continue
+
+        content = item.get('content', '')
+        write_file_content(path, content)
+        if 'last_modified' in item:
             os.utime(path, (item['last_modified'], item['last_modified']))
 
-def push_changes():
+def initial_sync():
+    global current_peer
+    peer, data = get_fastest_peer()
+    if peer and data:
+        log("Initial sync from peer")
+        current_peer = peer
+        apply_remote_state(data)
+    else:
+        log("No cloud peer reachable at startup. Running in offline mode.")
+
+def retry_peer_discovery():
+    global current_peer
+    while True:
+        time.sleep(30)
+        if current_peer is None:
+            peer, data = get_fastest_peer()
+            if peer and data:
+                current_peer = peer
+                apply_remote_state(data)
+                log("Peer became available. State pulled.")
+
+# ========== WATCHDOG ==========
+
+class UserSyncHandler(FileSystemEventHandler):
+    def __init__(self):
+        super().__init__()
+        self.last = {}
+
+    def record_change(self, event_type, src_path, is_dir, dest_path=None):
+        rel_src = os.path.relpath(src_path, WORKING_DIR)
+        rel_dest = os.path.relpath(dest_path, WORKING_DIR) if dest_path else None
+        if rel_src.startswith(os.path.basename(__file__)):
+            return
+
+        now = datetime.now().timestamp()
+        key = (event_type, rel_src, rel_dest)
+        if now - self.last.get(key, 0) < 0.5:
+            return
+        self.last[key] = now
+
+        change = {
+            "timestamp": datetime.now().isoformat(),
+            "type": event_type,
+            "src": rel_src,
+            "is_directory": is_dir,
+            "origin": MACHINE_ID
+        }
+        if dest_path:
+            change["dest"] = rel_dest
+        if event_type in ["created", "modified"] and not is_dir:
+            content = read_file_content(src_path)
+            if content:
+                change["content"] = content
+
+        pending_changes.append(change)
+        socketio.emit("change", change)
+
+    def on_created(self, event):
+        self.record_change("created", event.src_path, event.is_directory)
+
+    def on_deleted(self, event):
+        self.record_change("deleted", event.src_path, event.is_directory)
+
+    def on_modified(self, event):
+        self.record_change("modified", event.src_path, event.is_directory)
+
+    def on_moved(self, event):
+        self.record_change("moved", event.src_path, event.is_directory, event.dest_path)
+
+# ========== API ROUTES ==========
+
+@app.route("/api/status")
+def api_status():
+    file_state = []
+    for root, dirs, files in os.walk(WATCH_PATH):
+        for name in files:
+            path = os.path.join(root, name)
+            rel = os.path.relpath(path, WORKING_DIR)
+            try:
+                mtime = os.path.getmtime(path)
+                file_state.append({"path": rel, "mtime": mtime, "status": "synced"})
+            except:
+                pass
+        for name in dirs:
+            path = os.path.join(root, name)
+            rel = os.path.relpath(path, WORKING_DIR)
+            file_state.append({"path": rel, "is_directory": True, "status": "synced"})
+    return jsonify({
+        "pending": pending_changes,
+        "files": file_state
+    })
+
+@app.route("/api/pull", methods=["POST"])
+def api_pull():
+    global current_peer
+    peer, data = get_fastest_peer()
+    if not peer:
+        return jsonify({"status": "error", "message": "No cloud peer reachable"}), 500
+    current_peer = peer
+    apply_remote_state(data)
+    return jsonify({"status": "ok"})
+
+@app.route("/api/push", methods=["POST"])
+def api_push():
+    if not pending_changes:
+        return jsonify({"status": "ok", "message": "No changes to push"})
+
     success = 0
     for peer in CLOUD_PEERS:
         for change in pending_changes:
             try:
-                requests.post(f"{peer}/push_change", json=change, timeout=3)
-                success += 1
-            except:
-                continue
-    pending_changes.clear()
-    return success
+                r = requests.post(f"{peer}/push_change", json=change, timeout=5)
+                if r.status_code == 200:
+                    success += 1
+            except Exception as e:
+                log(f"Push to {peer} failed: {e}")
 
-# === Watchdog File Monitor ===
-class ChangeHandler(FileSystemEventHandler):
-    def dispatch(self, event):
-        if event.is_directory and not os.path.exists(event.src_path):
-            return  # skip temporary directory events
+    if success:
+        pending_changes.clear()
+        return jsonify({"status": "ok", "message": "Changes pushed"})
+    else:
+        return jsonify({"status": "error", "message": "Push failed"}), 500
 
-        rel_src = os.path.relpath(event.src_path, WORKING_DIR)
-        change = {
-            'timestamp': datetime.now().isoformat(),
-            'src': rel_src,
-            'is_directory': event.is_directory,
-            'origin': MACHINE_ID
-        }
+# ========== MAIN ==========
 
-        if event.event_type == 'created':
-            change['type'] = 'created'
-        elif event.event_type == 'modified':
-            change['type'] = 'modified'
-        elif event.event_type == 'deleted':
-            change['type'] = 'deleted'
-        elif event.event_type == 'moved':
-            change['type'] = 'moved'
-            change['dest'] = os.path.relpath(event.dest_path, WORKING_DIR)
+def start():
 
-        if change['type'] in ['created', 'modified'] and not change['is_directory']:
-            try:
-                with open(event.src_path, 'rb') as f:
-                    change['content'] = base64.b64encode(f.read()).decode('utf-8')
-            except:
-                return
-
-        pending_changes.append(change)
-        socketio.emit('change_detected', change)
-
-# === Flask Web Routes ===
-@app.route("/")
-def index():
-    return render_template("index.html")
-
-@app.route("/api/pull", methods=["POST"])
-def api_pull():
-    peer, data = get_fastest_peer()
-    if peer:
-        apply_remote_state(data)
-        return jsonify({"status": "ok"})
-    return jsonify({"status": "error", "message": "No cloud responded"}), 500
-
-@app.route("/api/push", methods=["POST"])
-def api_push():
-    count = push_changes()
-    return jsonify({"status": "ok", "changes_pushed": count})
-
-@app.route("/api/status")
-def api_status():
-    result = []
-    for root, dirs, files in os.walk(WATCH_PATH):
-        for name in files:
-            abs_path = os.path.join(root, name)
-            rel_path = os.path.relpath(abs_path, WORKING_DIR)
-            result.append({
-                'path': rel_path,
-                'mtime': os.path.getmtime(abs_path),
-                'status': 'modified' if any(c['src'] == rel_path for c in pending_changes) else 'synced'
-            })
-    return jsonify(result)
-
-# === App Start ===
-if __name__ == "__main__":
     os.makedirs(WATCH_PATH, exist_ok=True)
-    print("Initial sync from cloud...")
-    peer, data = get_fastest_peer()
-    if data:
-        apply_remote_state(data)
+    initial_sync()
+    threading.Thread(target=retry_peer_discovery, daemon=True).start()
 
     observer = Observer()
-    observer.schedule(ChangeHandler(), path=WATCH_PATH, recursive=True)
+    observer.schedule(UserSyncHandler(), path=WATCH_PATH, recursive=True)
     observer.start()
 
-    threading.Thread(target=socketio.run, args=(app,), kwargs={'host': '0.0.0.0', 'port': 7000}).start()
-
     try:
-        while True:
-            time.sleep(1)
+        socketio.run(app, host="0.0.0.0", port=7000)
     except KeyboardInterrupt:
         observer.stop()
-        observer.join()
-        print("Stopped")
+    observer.join()
+
+if __name__ == "__main__":
+    start()

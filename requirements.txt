@@ -1,3 +1,5 @@
 watchdog
 requests
 flask
+flask_socketio
+eventlet
