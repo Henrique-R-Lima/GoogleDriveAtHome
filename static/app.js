@@ -1,11 +1,25 @@
 const socket = io();
 const fileList = document.getElementById("fileList");
 const pendingList = document.getElementById("pendingList");
+const statusBar = document.getElementById("statusBar");
+
+function updateStatusBar(connected) {
+  if (connected) {
+    statusBar.textContent = "Connected to cloud";
+    statusBar.classList.add("connected");
+    statusBar.classList.remove("disconnected");
+  } else {
+    statusBar.textContent = "No cloud connection";
+    statusBar.classList.add("disconnected");
+    statusBar.classList.remove("connected");
+  }
+}
 
 function refresh() {
   fetch("/api/status")
     .then((res) => res.json())
     .then((data) => {
+      updateStatusBar(data.peer_connected !== false);
       pendingList.innerHTML = "";
       data.pending.forEach((item) => {
         const li = document.createElement("li");
@@ -21,6 +35,7 @@ function refresh() {
       });
     });
 }
+
 
 document.getElementById("pullBtn").onclick = () => {
   fetch("/api/pull", { method: "POST" })
@@ -42,6 +57,10 @@ document.getElementById("pushBtn").onclick = () => {
 
 socket.on("change", (data) => {
   refresh();
+});
+
+socket.on("peer_status", (data) => {
+  updateStatusBar(data.connected);
 });
 
 refresh();

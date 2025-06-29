@@ -6,7 +6,7 @@ import socket
 import base64
 import threading
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_socketio import SocketIO
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -19,6 +19,8 @@ CLOUD_PEERS = [
     "http://172.21.17.23:5000"
 ]
 
+connected = False  # Tracks if a peer is currently reachable
+
 WORKING_DIR = os.getcwd()
 WATCH_PATH = os.path.join(WORKING_DIR, "test_chamber")
 CHANGE_LOG = os.path.join(WORKING_DIR, "change_log.json")
@@ -29,11 +31,10 @@ MACHINE_ID = f"user-{socket.gethostname()}"
 
 pending_changes = []
 current_peer = None
-socketio = SocketIO(cors_allowed_origins="*")
-app = Flask(__name__)
-socketio.init_app(app)
+app = Flask(__name__, static_url_path='/static', static_folder='static', template_folder='templates')
+socketio = SocketIO(app, cors_allowed_origins="*")
 
-# ========== LOG UTILITIES ==========
+# ========== LOGGING ==========
 
 def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
@@ -59,15 +60,23 @@ def read_file_content(path):
 # ========== SYNC ENGINE ==========
 
 def get_fastest_peer():
+    global connected
     for url in CLOUD_PEERS:
         try:
             r = requests.get(f"{url}/get_full_state", timeout=3)
             if r.status_code == 200:
+                if not connected:
+                    connected = True
+                    socketio.emit("peer_status", {"connected": True})
                 log(f"Peer selected: {url}")
                 return url, r.json()
         except Exception as e:
             log(f"Peer {url} unreachable")
+    if connected:
+        connected = False
+        socketio.emit("peer_status", {"connected": False})
     return None, []
+
 
 def apply_remote_state(data):
     for item in data:
@@ -153,6 +162,10 @@ class UserSyncHandler(FileSystemEventHandler):
 
 # ========== API ROUTES ==========
 
+@app.route("/")
+def index():
+    return render_template("index.html")
+
 @app.route("/api/status")
 def api_status():
     file_state = []
@@ -171,7 +184,8 @@ def api_status():
             file_state.append({"path": rel, "is_directory": True, "status": "synced"})
     return jsonify({
         "pending": pending_changes,
-        "files": file_state
+        "files": file_state,
+        "peer_connected": connected
     })
 
 @app.route("/api/pull", methods=["POST"])
@@ -208,7 +222,6 @@ def api_push():
 # ========== MAIN ==========
 
 def start():
-
     os.makedirs(WATCH_PATH, exist_ok=True)
     initial_sync()
     threading.Thread(target=retry_peer_discovery, daemon=True).start()
