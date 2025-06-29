@@ -18,7 +18,8 @@ WATCH_PATH = os.path.join(WORKING_DIR, "test_chamber")
 CHANGE_LOG = os.path.join(WORKING_DIR, "change_log.json")
 
 # Peer machine's IP address
-PEER_ADDRESS = "http://172.21.17.22:5000"  # e.g., http://192.168.1.2:5000
+# PEER_ADDRESS = "http://192.168.15.68:5000"
+PEER_ADDRESS = "http://192.168.15.122:5000"
 
 MACHINE_ID = socket.gethostname()
 
