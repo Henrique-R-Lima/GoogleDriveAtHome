@@ -15,8 +15,7 @@ from datetime import datetime
 # ========== CONFIGURATION ==========
 
 CLOUD_PEERS = [
-    "http://192.168.15.68:5000"
-    "http://192.168.15.122:5000"
+    "http://192.168.100.232:5000"
 ]
 
 connected = False  # Tracks if a peer is currently reachable

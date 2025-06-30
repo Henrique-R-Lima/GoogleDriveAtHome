@@ -2,130 +2,131 @@
 
 ## 📄 Descrição do Projeto
 
-Este projeto é parte de um trabalho acadêmico da disciplina de **Sistemas Distribuídos**. O objetivo é desenvolver um **sistema de arquivos distribuído**, inspirado no funcionamento de ferramentas como o **Google Drive**. O sistema permitirá que usuários realizem **upload, download e exclusão** de arquivos, com foco em **alta disponibilidade** e **tolerância a falhas**, através da **replicação** e **sincronização** dos dados entre múltiplos servidores.
+Este projeto é parte de um trabalho acadêmico da disciplina de **Sistemas Distribuídos**. O objetivo é desenvolver um **sistema de arquivos distribuído**, inspirado em ferramentas como o **Google Drive**. O sistema permite que usuários realizem **upload, download, exclusão e sincronização** de arquivos, com foco em **alta disponibilidade** e **tolerância a falhas**, através da **replicação** e **sincronização** dos dados entre múltiplos servidores.
 
-## 🖥️ Arquitetura Proposta
+## 🖥️ Arquitetura
 
-- Dois computadores atuando como **servidores gerentes**, responsáveis por armazenar réplicas dos arquivos.
-- Um computador atuando como **cliente**, que fará requisições aos servidores.
-- **Sincronização automática** entre os servidores, garantindo a consistência dos dados.
-- **Escolha dinâmica** do servidor a ser utilizado, considerando:
-  - Frescor dos dados
-  - Tempo de resposta
-  - Disponibilidade
-
-A replicação e a comunicação entre servidores serão implementadas com um **mecanismo de troca de mensagens**, que está em fase de definição.
+- **Dois servidores gerentes**: armazenam réplicas dos arquivos e sincronizam entre si automaticamente.
+- **Um cliente**: realiza requisições aos servidores, monitora alterações locais e oferece interface web para acompanhamento e comandos.
+- **Sincronização automática** entre servidores, garantindo consistência dos dados.
+- **Escolha dinâmica** do servidor pelo cliente, considerando disponibilidade e resposta.
+- **Interface web** para visualização do status, arquivos e mudanças pendentes.
+- **Cliente CLI** para upload/download de arquivos.
 
 ## 🛠️ Tecnologias Utilizadas
 
-| Tecnologia      | Finalidade                                         |
-|-----------------|----------------------------------------------------|
-| **Python**      | Linguagem principal do sistema                     |
-| **watchdog**    | Monitoramento de mudanças em diretórios            |
-| **MongoDB**     | Armazenamento dos eventos de alteração             |
-| **pymongo**     | Driver Python para MongoDB                         |
-| **requests**    | Comunicação HTTP (se necessário)                   |
-| **Flask**       | (Futuro) APIs RESTful para comunicação             |
-
----
-
-## 📁 Estrutura de Código
-
-O repositório inclui três scripts com funcionalidades semelhantes que monitoram alterações em diretórios:
-
-### `file_watcher.py`, `directory_state.py`, `enhanced_watchdog.py`
-
-Todos esses scripts:
-
-- Utilizam a biblioteca `watchdog` para monitorar um diretório chamado `test_chamber`.
-- Capturam e registram eventos como **criação, modificação, exclusão e movimentação** de arquivos e diretórios.
-- Geram um arquivo `change_log.json` que armazena os eventos em formato JSON.
-
----
+| Tecnologia        | Finalidade                                         |
+|-------------------|----------------------------------------------------|
+| **Python**        | Linguagem principal do sistema                     |
+| **watchdog**      | Monitoramento de mudanças em diretórios            |
+| **Flask**         | APIs RESTful e interface web                       |
+| **Flask-SocketIO**| Comunicação em tempo real com o frontend           |
+| **requests**      | Comunicação HTTP entre servidores e cliente        |
+| **eventlet**      | Suporte a WebSockets                               |
+| **base64**        | Transferência segura de arquivos binários          |
 
 ## 📁 Estrutura do Projeto
 
 ```
 GoogleDriveAtHome/
 │
-├── directory_state.py         # Script principal de monitoramento e registro de eventos
-├── mongo_config.py            # Configuração da conexão com o MongoDB
-├── requirements.txt           # Dependências do projeto
-├── change_log.json            # Log local das alterações (opcional)
-├── test_chamber/              # Diretório monitorado
-│   └── ...                    # Arquivos e subpastas monitorados
+├── server.py            # Servidor: monitora, sincroniza e expõe APIs REST
+├── user.py              # Cliente: monitora, sincroniza, interface web e API
+├── sync_client.py       # Cliente CLI simples para upload/download
+├── requirements.txt     # Dependências do projeto
+├── change_log.json      # Log local das alterações
+├── test_chamber/        # Diretório monitorado e sincronizado
+│   ├── TXT.txt
+│   ├── novoteste.txt
+│   └── ...
+├── static/              # Arquivos estáticos da interface web
+│   ├── app.js
+│   └── style.css
+├── templates/
+│   └── index.html       # Interface web principal
 └── README.md
 ```
 
----
-
 ## 🚀 Como Executar o Projeto
 
-### 1. Instale o MongoDB
-
-- Baixe e instale o MongoDB Community Server: https://www.mongodb.com/try/download/community
-- Inicie o serviço do MongoDB:
-    - Se instalado como serviço:  
-      `net start MongoDB`
-    - Ou execute o `mongod.exe` manualmente.
-
-### 2. Instale as dependências do Python
+### 1. Instale as dependências do Python
 
 No terminal do VS Code, execute:
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Configure o acesso ao MongoDB
+### 2. Inicie os servidores
 
-Verifique o arquivo `mongo_config.py`:
-```python
-MONGO_URI = "mongodb://localhost:27017/"
-DB_NAME = "google_drive_at_home"
-```
-
-### 4. Execute o monitoramento
-
-No terminal, execute:
+Em dois computadores diferentes (ou portas diferentes), execute:
 ```bash
-python directory_state.py
+python server.py
 ```
+- Configure o IP do peer em `PEER_ADDRESS` no início do [`server.py`](server.py).
 
-### 5. Faça alterações no diretório monitorado
+### 3. Inicie o cliente
 
-- Adicione, edite, mova ou exclua arquivos na pasta `test_chamber`.
-- Os eventos serão registrados no arquivo `change_log.json` e na collection `events` do MongoDB.
-
-### 6. Visualize os eventos no MongoDB
-
-#### Usando o terminal:
+No computador cliente, execute:
 ```bash
-mongosh
-use google_drive_at_home
-db.events.find().pretty()
+python user.py
 ```
+- O cliente abrirá um servidor Flask na porta 7000, com interface web e API.
 
-#### Usando o MongoDB Compass:
-- Abra o Compass e conecte em `mongodb://localhost:27017/`
-- Navegue até o banco `google_drive_at_home` e veja a collection `events`.
+### 4. Acesse a interface web
 
----
+Abra no navegador:
+```
+http://localhost:7000/
+```
+- Visualize arquivos, mudanças pendentes, status de conexão e realize comandos de pull/push.
+
+### 5. Use o cliente CLI (opcional)
+
+Para listar, baixar ou enviar arquivos diretamente via terminal:
+```bash
+python sync_client.py
+```
+- Siga o menu interativo.
+
+## 🌐 APIs e Funcionalidades
+
+### Servidor (`server.py`)
+
+- `/get_full_state` (GET): Retorna o estado completo dos arquivos/diretórios monitorados.
+- `/get_changes` (GET): Retorna mudanças desde um timestamp.
+- `/push_change` (POST): Recebe e aplica uma mudança enviada pelo cliente.
+
+### Cliente (`user.py`)
+
+- `/api/status` (GET): Retorna status dos arquivos, mudanças pendentes e conexão.
+- `/api/pull` (POST): Força sincronização do estado do servidor para o cliente.
+- `/api/push` (POST): Envia mudanças pendentes do cliente para o servidor.
+- Interface web em tempo real via SocketIO.
+
+### Cliente CLI (`sync_client.py`)
+
+- Listar arquivos disponíveis no servidor.
+- Baixar arquivos do servidor.
+- Enviar arquivos para o servidor.
 
 ## 📦 Dependências
 
-Para executar os scripts de monitoramento, instale as dependências principais com:
+- Python 3.8+
+- watchdog
+- flask
+- flask_socketio
+- requests
+- eventlet
 
+Instale com:
 ```bash
 pip install -r requirements.txt
 ```
 
----
-
-## 📚 Exemplo de Documento na Collection `events`
+## 📚 Exemplo de Documento no Log de Mudanças
 
 ```json
 {
-  "_id": "ObjectId",
   "timestamp": "2025-05-31T10:10:27.793686",
   "type": "modified",
   "src": "test_chamber/TXT.txt",
@@ -133,47 +134,33 @@ pip install -r requirements.txt
 }
 ```
 
----
-
 ## 💡 Observações Importantes
 
-- O sistema implementa um filtro para evitar eventos duplicados em curto intervalo de tempo (0.5s) para o mesmo arquivo.
-- O MongoDB cria automaticamente o banco e a collection ao inserir o primeiro evento.
-- O arquivo `change_log.json` é mantido como log local, mas o MongoDB é a fonte principal dos eventos.
-- Para evitar duplicidade de eventos, o sistema ignora eventos idênticos para o mesmo arquivo em menos de 0.5 segundo. Se quiser ajustar esse tempo, altere o valor em `directory_state.py` na linha:
-  ```python
-  if now - last_time < 0.5:
-      return
-  ```
-
----
+- O sistema implementa filtro para evitar eventos duplicados em curto intervalo (0.5s) para o mesmo arquivo.
+- O arquivo `change_log.json` é o log local das alterações.
+- O cliente detecta automaticamente a disponibilidade dos servidores e tenta reconectar.
+- Toda transferência de arquivo é feita via base64 para garantir integridade.
+- O diretório monitorado é sempre `test_chamber`.
 
 ## 👨‍💻 Alunos
 
 - **Heitor Vieira Macedo**
 - **Henrique Rodrigues Lima**
 
----
-
 ## 📚 Tema Relacionado
 
 **Sistemas de Arquivos Distribuídos**
-
----
 
 ## ✅ Status
 
 🟡 Em desenvolvimento  
 🔍 Pesquisando ferramenta de comunicação entre servidores
 
----
-
 ## 📌 Observações Futuras
 
-Este repositório corresponde à **etapa de monitoramento e sincronização local**. Em fases futuras do projeto, serão adicionados:
-
-- APIs RESTful com Flask
-- Lógica de replicação e consistência entre servidores
-- Interface de cliente para interação com o sistema
+- Melhorias na resolução de conflitos de arquivos.
+- Interface web para upload/download direto.
+- Suporte a múltiplos peers e balanceamento.
+- Autenticação e controle de acesso.
 
 ---
