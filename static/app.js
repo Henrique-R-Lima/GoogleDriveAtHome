@@ -64,3 +64,5 @@ socket.on("peer_status", (data) => {
 });
 
 refresh();
+
+setInterval(refresh, 3000);

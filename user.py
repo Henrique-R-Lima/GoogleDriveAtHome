@@ -187,36 +187,81 @@ def api_status():
         "peer_connected": connected
     })
 
+# Push and pull now check for the fastest peer before action
 @app.route("/api/pull", methods=["POST"])
 def api_pull():
     global current_peer
-    peer, data = get_fastest_peer()
-    if not peer:
-        return jsonify({"status": "error", "message": "No cloud peer reachable"}), 500
-    current_peer = peer
-    apply_remote_state(data)
-    return jsonify({"status": "ok"})
+    best_peer = None
+    best_time = float("inf")
+    best_data = None
+
+    # Try all peers and select the fastest
+    for peer in CLOUD_PEERS:
+        try:
+            start = time.time()
+            r = requests.get(f"{peer}/get_full_state", timeout=5)
+            if r.status_code == 200:
+                elapsed = time.time() - start
+                if elapsed < best_time:
+                    best_time = elapsed
+                    best_peer = peer
+                    best_data = r.json()
+        except Exception as e:
+            log(f"Peer {peer} unreachable during pull selection: {e}")
+
+    if not best_peer or not best_data:
+        return jsonify({"status": "error", "message": "No reachable peers"}), 502
+
+    current_peer = best_peer
+    apply_remote_state(best_data)
+    log(f"Pulled from fastest peer: {best_peer}")
+    return jsonify({"status": "ok", "message": f"Pulled from {best_peer}"})
 
 @app.route("/api/push", methods=["POST"])
 def api_push():
+    global pending_changes
+
     if not pending_changes:
         return jsonify({"status": "ok", "message": "No changes to push"})
 
-    success = 0
+    best_peer = None
+    best_time = float("inf")
+
+    # Try all peers and find the fastest responder
     for peer in CLOUD_PEERS:
-        for change in pending_changes:
-            try:
-                r = requests.post(f"{peer}/push_change", json=change, timeout=5)
-                if r.status_code == 200:
-                    success += 1
-            except Exception as e:
-                log(f"Push to {peer} failed: {e}")
+        try:
+            start = time.time()
+            test = requests.get(f"{peer}/get_full_state", timeout=3)
+            if test.status_code == 200:
+                elapsed = time.time() - start
+                if elapsed < best_time:
+                    best_time = elapsed
+                    best_peer = peer
+        except Exception as e:
+            log(f"Peer {peer} unreachable during push selection: {e}")
+
+    if not best_peer:
+        return jsonify({"status": "error", "message": "No reachable peers"}), 502
+
+    # Push all changes to the fastest peer
+    success = True
+    for change in pending_changes:
+        try:
+            r = requests.post(f"{best_peer}/push_change", json=change, timeout=5)
+            if r.status_code != 200:
+                log(f"Push to {best_peer} failed with status {r.status_code}")
+                success = False
+                break
+        except Exception as e:
+            log(f"Push to {best_peer} failed: {e}")
+            success = False
+            break
 
     if success:
         pending_changes.clear()
-        return jsonify({"status": "ok", "message": "Changes pushed"})
+        return jsonify({"status": "ok", "message": f"Pushed to {best_peer}"})
     else:
-        return jsonify({"status": "error", "message": "Push failed"}), 500
+        return jsonify({"status": "error", "message": f"Push to {best_peer} failed"}), 502
 
 # ========== MAIN ==========
 

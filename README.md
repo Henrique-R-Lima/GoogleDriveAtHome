@@ -1,10 +1,10 @@
 # Sistema de Armazenamento Distribuído com Replicação e Sincronização de Arquivos
 
-## 📄 Descrição do Projeto
+## Descrição do Projeto
 
 Este projeto é parte de um trabalho acadêmico da disciplina de **Sistemas Distribuídos**. O objetivo é desenvolver um **sistema de arquivos distribuído**, inspirado em ferramentas como o **Google Drive**. O sistema permite que usuários realizem **upload, download, exclusão e sincronização** de arquivos, com foco em **alta disponibilidade** e **tolerância a falhas**, através da **replicação** e **sincronização** dos dados entre múltiplos servidores.
 
-## 🖥️ Arquitetura
+## Arquitetura
 
 - **Dois servidores gerentes**: armazenam réplicas dos arquivos e sincronizam entre si automaticamente.
 - **Um cliente**: realiza requisições aos servidores, monitora alterações locais e oferece interface web para acompanhamento e comandos.
@@ -12,7 +12,7 @@ Este projeto é parte de um trabalho acadêmico da disciplina de **Sistemas Dist
 - **Escolha dinâmica** do servidor pelo cliente, considerando disponibilidade e resposta.
 - **Interface web** para visualização do status, arquivos e mudanças pendentes.
 
-## 🛠️ Tecnologias Utilizadas
+## Tecnologias Utilizadas
 
 | Tecnologia        | Finalidade                                         |
 |-------------------|----------------------------------------------------|
@@ -24,7 +24,7 @@ Este projeto é parte de um trabalho acadêmico da disciplina de **Sistemas Dist
 | **eventlet**      | Suporte a WebSockets                               |
 | **base64**        | Transferência segura de arquivos binários          |
 
-## 📁 Estrutura do Projeto
+## Estrutura do Projeto
 
 ```
 GoogleDriveAtHome/
@@ -45,7 +45,7 @@ GoogleDriveAtHome/
 └── README.md
 ```
 
-## 🚀 Como Executar o Projeto
+## Como Executar o Projeto
 
 ### 1. Instale as dependências do Python
 
@@ -78,7 +78,7 @@ http://localhost:7000/
 ```
 - Visualize arquivos, mudanças pendentes, status de conexão e realize comandos de pull/push.
 
-## 🌐 APIs e Funcionalidades
+## APIs e Funcionalidades
 
 ### Servidor (`server.py`)
 
@@ -93,7 +93,7 @@ http://localhost:7000/
 - `/api/push` (POST): Envia mudanças pendentes do cliente para o servidor.
 - Interface web em tempo real via SocketIO.
 
-## 📦 Dependências
+## Dependências
 
 - Python 3.8+
 - watchdog
@@ -107,7 +107,7 @@ Instale com:
 pip install -r requirements.txt
 ```
 
-## 📚 Exemplo de Documento no Log de Mudanças
+## Exemplo de Documento no Log de Mudanças
 
 ```json
 {
@@ -118,7 +118,7 @@ pip install -r requirements.txt
 }
 ```
 
-## 💡 Observações Importantes
+## Observações Importantes
 
 - O sistema implementa filtro para evitar eventos duplicados em curto intervalo (0.5s) para o mesmo arquivo.
 - O arquivo `change_log.json` é o log local das alterações.
@@ -126,21 +126,21 @@ pip install -r requirements.txt
 - Toda transferência de arquivo é feita via base64 para garantir integridade.
 - O diretório monitorado é sempre `test_chamber`.
 
-## 👨‍💻 Alunos
+## Alunos
 
 - **Heitor Vieira Macedo**
 - **Henrique Rodrigues Lima**
 
-## 📚 Tema Relacionado
+## Tema Relacionado
 
 **Sistemas de Arquivos Distribuídos**
 
-## ✅ Status
+## Status
 
-🟡 Em desenvolvimento  
-🔍 Pesquisando ferramenta de comunicação entre servidores
+Em desenvolvimento  
+Pesquisando ferramenta de comunicação entre servidores
 
-## 📌 Observações Futuras
+## Observações Futuras
 
 - Melhorias na resolução de conflitos de arquivos.
 - Interface web para upload/download direto.
