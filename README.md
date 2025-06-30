@@ -11,7 +11,6 @@ Este projeto é parte de um trabalho acadêmico da disciplina de **Sistemas Dist
 - **Sincronização automática** entre servidores, garantindo consistência dos dados.
 - **Escolha dinâmica** do servidor pelo cliente, considerando disponibilidade e resposta.
 - **Interface web** para visualização do status, arquivos e mudanças pendentes.
-- **Cliente CLI** para upload/download de arquivos.
 
 ## 🛠️ Tecnologias Utilizadas
 
@@ -32,7 +31,6 @@ GoogleDriveAtHome/
 │
 ├── server.py            # Servidor: monitora, sincroniza e expõe APIs REST
 ├── user.py              # Cliente: monitora, sincroniza, interface web e API
-├── sync_client.py       # Cliente CLI simples para upload/download
 ├── requirements.txt     # Dependências do projeto
 ├── change_log.json      # Log local das alterações
 ├── test_chamber/        # Diretório monitorado e sincronizado
@@ -80,14 +78,6 @@ http://localhost:7000/
 ```
 - Visualize arquivos, mudanças pendentes, status de conexão e realize comandos de pull/push.
 
-### 5. Use o cliente CLI (opcional)
-
-Para listar, baixar ou enviar arquivos diretamente via terminal:
-```bash
-python sync_client.py
-```
-- Siga o menu interativo.
-
 ## 🌐 APIs e Funcionalidades
 
 ### Servidor (`server.py`)
@@ -102,12 +92,6 @@ python sync_client.py
 - `/api/pull` (POST): Força sincronização do estado do servidor para o cliente.
 - `/api/push` (POST): Envia mudanças pendentes do cliente para o servidor.
 - Interface web em tempo real via SocketIO.
-
-### Cliente CLI (`sync_client.py`)
-
-- Listar arquivos disponíveis no servidor.
-- Baixar arquivos do servidor.
-- Enviar arquivos para o servidor.
 
 ## 📦 Dependências
 
