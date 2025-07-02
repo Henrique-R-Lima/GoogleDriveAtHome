@@ -15,7 +15,7 @@ from datetime import datetime
 # ========== CONFIGURATION ==========
 
 CLOUD_PEERS = [
-    "http://192.168.100.232:5000"
+    "http://192.168.15.68:5000"
 ]
 
 connected = False  # Tracks if a peer is currently reachable
@@ -56,6 +56,24 @@ def read_file_content(path):
         log(f"Error reading {path}: {e}")
         return None
 
+def clear_directory_contents(path):
+    """
+    Deletes all files and subdirectories in the specified directory.
+    The directory itself is not deleted.
+    """
+    if not os.path.isdir(path):
+        raise ValueError(f"{path} is not a valid directory")
+
+    for filename in os.listdir(path):
+        file_path = os.path.join(path, filename)
+        try:
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.remove(file_path)
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+        except Exception as e:
+            print(f"Failed to delete {file_path}: {e}")
+
 # ========== SYNC ENGINE ==========
 
 def get_fastest_peer():
@@ -78,22 +96,25 @@ def get_fastest_peer():
 
 
 def apply_remote_state(data):
-    for item in data:
-        path = os.path.join(WORKING_DIR, item['path'])
+    if data:
+        for item in data:
+            path = os.path.join(WORKING_DIR, item['path'])
 
-        if item['is_directory']:
-            os.makedirs(path, exist_ok=True)
-            continue
+            if item['is_directory']:
+                os.makedirs(path, exist_ok=True)
+                continue
 
-        content = item.get('content', '')
-        write_file_content(path, content)
-        if 'last_modified' in item:
-            os.utime(path, (item['last_modified'], item['last_modified']))
+            content = item.get('content', '')
+            write_file_content(path, content)
+            if 'last_modified' in item:
+                os.utime(path, (item['last_modified'], item['last_modified']))
+    else:
+        clear_directory_contents(WATCH_PATH)
 
 def initial_sync():
     global current_peer
     peer, data = get_fastest_peer()
-    if peer and data:
+    if peer:
         log("Initial sync from peer")
         current_peer = peer
         apply_remote_state(data)
@@ -209,7 +230,7 @@ def api_pull():
         except Exception as e:
             log(f"Peer {peer} unreachable during pull selection: {e}")
 
-    if not best_peer or not best_data:
+    if not best_peer:
         return jsonify({"status": "error", "message": "No reachable peers"}), 502
 
     current_peer = best_peer
