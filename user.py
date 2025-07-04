@@ -15,7 +15,7 @@ from datetime import datetime
 # ========== CONFIGURATION ==========
 
 CLOUD_PEERS = [
-    "http://192.168.15.68:5000"
+    "http://192.168.58.52:5000"
 ]
 
 connected = False  # Tracks if a peer is currently reachable
@@ -268,7 +268,7 @@ def api_push():
     success = True
     for change in pending_changes:
         try:
-            r = requests.post(f"{best_peer}/push_change", json=change, timeout=5)
+            r = requests.post(f"{best_peer}/push_change", json=change, timeout=30)
             if r.status_code != 200:
                 log(f"Push to {best_peer} failed with status {r.status_code}")
                 success = False
@@ -288,6 +288,13 @@ def api_push():
 
 def start():
     os.makedirs(WATCH_PATH, exist_ok=True)
+
+    # Create change_log.json if it doesn't exist
+    if not os.path.exists(CHANGE_LOG):
+        with open(CHANGE_LOG, 'w') as f:
+            json.dump([], f)
+        log("Created missing change_log.json")
+
     initial_sync()
     threading.Thread(target=retry_peer_discovery, daemon=True).start()
 
@@ -300,6 +307,7 @@ def start():
     except KeyboardInterrupt:
         observer.stop()
     observer.join()
+
 
 if __name__ == "__main__":
     start()
