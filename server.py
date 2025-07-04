@@ -19,9 +19,11 @@ CHANGE_LOG = os.path.join(WORKING_DIR, "change_log.json")
 
 # Peer machine's IP address
 # PEER_ADDRESS = "http://192.168.15.68:5000"
-PEER_ADDRESS = "http://192.168.15.122:5000"
+PEER_ADDRESS = "http://192.168.58.90:5000"
 
 MACHINE_ID = socket.gethostname()
+
+log_lock = threading.Lock()  # Ensures thread-safe access
 
 # ========== INIT SETUP ==========
 
@@ -34,10 +36,27 @@ def load_log():
         return json.load(f)
 
 def append_to_log(change):
-    log = load_log()
-    log.append(change)
-    with open(CHANGE_LOG, 'w') as f:
-        json.dump(log, f, indent=2)
+    with log_lock:
+        try:
+            if not os.path.exists(CHANGE_LOG):
+                log = []
+            else:
+                with open(CHANGE_LOG, 'r', encoding='utf-8') as f:
+                    try:
+                        log = json.load(f)
+                        if not isinstance(log, list):
+                            log = []
+                    except json.JSONDecodeError:
+                        print("[append_to_log] Warning: Log file is invalid, resetting.")
+                        log = []
+
+            log.append(change)
+
+            with open(CHANGE_LOG, 'w', encoding='utf-8') as f:
+                json.dump(log, f, indent=2)
+
+        except Exception as e:
+            print(f"[append_to_log] Error: {e}")
 
 # ========== FILE I/O ==========
 
