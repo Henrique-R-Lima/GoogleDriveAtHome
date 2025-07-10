@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import json
 import shutil
@@ -18,8 +19,7 @@ WATCH_PATH = os.path.join(WORKING_DIR, "test_chamber")
 CHANGE_LOG = os.path.join(WORKING_DIR, "change_log.json")
 
 # Peer machine's IP address
-# PEER_ADDRESS = "http://192.168.15.68:5000"
-PEER_ADDRESS = "http://192.168.58.90:5000"
+PEER_ADDRESS = "https://"
 
 MACHINE_ID = socket.gethostname()
 
@@ -285,7 +285,28 @@ def sync_with_peer():
 
 # ========== MAIN RUN ==========
 
+def collectPeer():
+    if len(sys.argv) > 1: 
+        global PEER_ADDRESS
+        for i, arg in enumerate(sys.argv):
+            if i == 1:
+                PEER_ADDRESS += arg + ":5000"
+
+def printConfiguration():
+    print("\n---Server Start---")
+    print("\n---Configuration---")
+    print(f" Peer server: {PEER_ADDRESS}")
+    print(f" Working directory: {WORKING_DIR}")
+    print(f" Watch path: {WATCH_PATH}")
+    print(f" Change log file: {CHANGE_LOG}")
+    print(f" Machine ID: {MACHINE_ID}")
+    print("---\n")
+
 if __name__ == "__main__":
+
+    collectPeer()
+    printConfiguration()
+
     os.makedirs(WATCH_PATH, exist_ok=True)
 
     print("Performing initial synchronization with peer...")
@@ -298,6 +319,7 @@ if __name__ == "__main__":
 
     threading.Thread(target=run_server, daemon=True).start()
     threading.Thread(target=sync_with_peer, daemon=True).start()
+
 
     try:
         while True:

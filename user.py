@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import json
 import shutil
@@ -6,6 +7,7 @@ import socket
 import base64
 import threading
 import requests
+import webbrowser
 from flask import Flask, request, jsonify, render_template
 from flask_socketio import SocketIO
 from watchdog.observers import Observer
@@ -14,9 +16,7 @@ from datetime import datetime
 
 # ========== CONFIGURATION ==========
 
-CLOUD_PEERS = [
-    "http://192.168.58.52:5000"
-]
+SERVERS = []
 
 connected = False  # Tracks if a peer is currently reachable
 
@@ -78,7 +78,7 @@ def clear_directory_contents(path):
 
 def get_fastest_peer():
     global connected
-    for url in CLOUD_PEERS:
+    for url in SERVERS:
         try:
             r = requests.get(f"{url}/get_full_state", timeout=3)
             if r.status_code == 200:
@@ -217,7 +217,7 @@ def api_pull():
     best_data = None
 
     # Try all peers and select the fastest
-    for peer in CLOUD_PEERS:
+    for peer in SERVERS:
         try:
             start = time.time()
             r = requests.get(f"{peer}/get_full_state", timeout=5)
@@ -249,7 +249,7 @@ def api_push():
     best_time = float("inf")
 
     # Try all peers and find the fastest responder
-    for peer in CLOUD_PEERS:
+    for peer in SERVERS:
         try:
             start = time.time()
             test = requests.get(f"{peer}/get_full_state", timeout=3)
@@ -287,6 +287,9 @@ def api_push():
 # ========== MAIN ==========
 
 def start():
+
+    webbrowser.open("localhost:7000")
+
     os.makedirs(WATCH_PATH, exist_ok=True)
 
     # Create change_log.json if it doesn't exist
@@ -308,6 +311,23 @@ def start():
         observer.stop()
     observer.join()
 
+def collectPeers():
+    if len(sys.argv) > 1:    
+        for i, arg in enumerate(sys.argv):
+            if i>0:
+                SERVERS.append(arg)
+
+def printConfiguration():
+    print("\n---Client Start---")
+    print("\n---Configuration---")
+    print(f" Set servers: {SERVERS}")
+    print(f" Working directory: {WORKING_DIR}")
+    print(f" Watch path: {WATCH_PATH}")
+    print(f" Change log file: {CHANGE_LOG}")
+    print(f" Machine ID: {MACHINE_ID}")
+    print("---\n")
 
 if __name__ == "__main__":
+    collectPeers()
+    printConfiguration()
     start()

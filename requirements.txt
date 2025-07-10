@@ -3,3 +3,4 @@ requests
 flask
 flask_socketio
 eventlet
+pyinstaller
