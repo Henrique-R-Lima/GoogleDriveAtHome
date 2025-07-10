@@ -80,7 +80,7 @@ def get_fastest_peer():
     global connected
     for url in SERVERS:
         try:
-            r = requests.get(f"{url}/get_full_state", timeout=3)
+            r = requests.get(f"http://{url}:5000/get_full_state", timeout=3)
             if r.status_code == 200:
                 if not connected:
                     connected = True
@@ -220,7 +220,7 @@ def api_pull():
     for peer in SERVERS:
         try:
             start = time.time()
-            r = requests.get(f"{peer}/get_full_state", timeout=5)
+            r = requests.get(f"http://{peer}:5000/get_full_state", timeout=5)
             if r.status_code == 200:
                 elapsed = time.time() - start
                 if elapsed < best_time:
@@ -252,7 +252,7 @@ def api_push():
     for peer in SERVERS:
         try:
             start = time.time()
-            test = requests.get(f"{peer}/get_full_state", timeout=3)
+            test = requests.get(f"http://{peer}:5000/get_full_state", timeout=3)
             if test.status_code == 200:
                 elapsed = time.time() - start
                 if elapsed < best_time:
@@ -268,7 +268,7 @@ def api_push():
     success = True
     for change in pending_changes:
         try:
-            r = requests.post(f"{best_peer}/push_change", json=change, timeout=30)
+            r = requests.post(f"http://{best_peer}:5000/push_change", json=change, timeout=30)
             if r.status_code != 200:
                 log(f"Push to {best_peer} failed with status {r.status_code}")
                 success = False
@@ -288,7 +288,7 @@ def api_push():
 
 def start():
 
-    webbrowser.open("localhost:7000")
+    #webbrowser.open("http://localhost:7000")
 
     os.makedirs(WATCH_PATH, exist_ok=True)
 
